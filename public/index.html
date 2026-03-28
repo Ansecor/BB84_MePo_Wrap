@@ -1,0 +1,1724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BB84 Chat Demo + Eve + Polarization</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg-2: #111933;
+      --panel: rgba(16, 23, 43, 0.82);
+      --panel-border: rgba(148, 163, 184, 0.22);
+      --text: #e5eefc;
+      --muted: #9fb0d2;
+      --accent: #60a5fa;
+      --accent-2: #22d3ee;
+      --good: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --input: rgba(15, 23, 42, 0.9);
+      --shadow: 0 14px 40px rgba(2, 6, 23, 0.36);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(34, 211, 238, 0.16), transparent 30%),
+        radial-gradient(circle at top right, rgba(96, 165, 250, 0.18), transparent 28%),
+        linear-gradient(180deg, #09101f 0%, #0b1020 50%, #0d1428 100%);
+    }
+
+    .app {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 28px 18px 36px;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-end;
+      margin-bottom: 18px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(1.9rem, 3vw, 3rem);
+      letter-spacing: -0.03em;
+    }
+
+    .hero p {
+      margin: 8px 0 0;
+      max-width: 760px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(96, 165, 250, 0.12);
+      border: 1px solid rgba(96, 165, 250, 0.25);
+      color: #dbeafe;
+      font-size: 0.92rem;
+      white-space: nowrap;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(460px, 1.18fr) minmax(620px, 1.02fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .layout > .stack {
+      min-width: 0;
+    }
+
+    .stack {
+      display: grid;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      padding: 18px;
+      min-width: 0;
+    }
+
+    .panel-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .panel-title h2,
+    .panel-title h3 {
+      margin: 0;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+
+    .subtle {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field label,
+    .toggle {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    input[type="text"],
+    input:not([type]),
+    button {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      padding: 12px 13px;
+      font-size: 0.98rem;
+    }
+
+    input[type="text"],
+    input:not([type]) {
+      background: var(--input);
+      color: var(--text);
+      outline: none;
+    }
+
+    input::placeholder { color: #7e8fb2; }
+
+    button {
+      cursor: pointer;
+      background: linear-gradient(135deg, rgba(96, 165, 250, 0.95), rgba(34, 211, 238, 0.92));
+      color: white;
+      border: none;
+      font-weight: 600;
+      box-shadow: 0 10px 24px rgba(56, 189, 248, 0.24);
+      transition: transform 0.14s ease, filter 0.14s ease, opacity 0.14s ease;
+    }
+
+    button:hover { transform: translateY(-1px); filter: brightness(1.04); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+    .ghost-btn {
+      background: rgba(148, 163, 184, 0.1);
+      color: var(--text);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      box-shadow: none;
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 12px;
+      min-height: 47px;
+      border-radius: 12px;
+      background: rgba(148, 163, 184, 0.08);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+    }
+
+    .toggle input { width: auto; margin: 0; accent-color: var(--accent); }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .metric-card {
+      padding: 14px;
+      border-radius: 15px;
+      background: rgba(15, 23, 42, 0.78);
+      border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .metric-label {
+      display: block;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .metric-value {
+      display: block;
+      font-size: 1.22rem;
+      font-weight: 700;
+    }
+
+    .status-box {
+      border-radius: 14px;
+      padding: 14px;
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.68));
+      border: 1px solid rgba(96, 165, 250, 0.18);
+      color: #dbeafe;
+      line-height: 1.45;
+    }
+
+    .status-box.good { border-color: rgba(34, 197, 94, 0.3); }
+    .status-box.warn { border-color: rgba(245, 158, 11, 0.35); }
+    .status-box.bad { border-color: rgba(239, 68, 68, 0.35); }
+
+    .chat-box, .event-log {
+      overflow: auto;
+      white-space: pre-wrap;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      background: rgba(5, 10, 22, 0.44);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      line-height: 1.45;
+    }
+
+    .chat-box { height: 300px; }
+    .event-log { height: 220px; }
+
+    .chat-controls {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .transcript-summary {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .summary-chip {
+      border-radius: 13px;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.15);
+    }
+
+    .summary-chip b {
+      display: block;
+      margin-top: 4px;
+      font-size: 1.02rem;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      background: rgba(3, 8, 20, 0.45);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+    }
+
+    th, td {
+      padding: 10px 11px;
+      text-align: left;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+      font-size: 0.93rem;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: rgba(11, 16, 32, 0.96);
+      z-index: 1;
+      color: #cfe3ff;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    tr:hover td { background: rgba(148, 163, 184, 0.05); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+
+    .pill.good { color: #bbf7d0; background: rgba(34, 197, 94, 0.13); border-color: rgba(34, 197, 94, 0.22); }
+    .pill.bad { color: #fecaca; background: rgba(239, 68, 68, 0.13); border-color: rgba(239, 68, 68, 0.24); }
+    .pill.warn { color: #fde68a; background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.24); }
+    .pill.info { color: #bfdbfe; background: rgba(96, 165, 250, 0.13); border-color: rgba(96, 165, 250, 0.22); }
+
+    canvas {
+      width: 100%;
+      max-width: 100%;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #f8fbff, #eef4ff);
+    }
+
+    .legend-box {
+      margin-top: 10px;
+      color: #d8e6ff;
+      line-height: 1.45;
+    }
+
+    .footnote {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .panel-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .quantum-preview-note {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .info-tile {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.68);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      color: var(--muted);
+      line-height: 1.45;
+      min-width: 0;
+    }
+
+    .info-tile strong {
+      color: var(--text);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+
+    .pipeline-panel {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.68);
+      border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .pipeline-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .mini-stage {
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(10, 16, 30, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      min-width: 0;
+    }
+
+    .mini-stage strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 1rem;
+      overflow-wrap: anywhere;
+    }
+
+    .modal-panel {
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(12, 19, 35, 0.75);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+    }
+
+    .mini-heading {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .inspector-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .bloch-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .bloch-card {
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(7, 12, 25, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .bloch-title {
+      color: var(--muted);
+      font-size: 0.82rem;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .bloch-state {
+      white-space: pre-line;
+      line-height: 1.5;
+      font-size: 0.94rem;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 22px;
+      background: rgba(2, 6, 23, 0.72);
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal-card {
+      width: min(1320px, 100%);
+      max-height: min(92vh, 920px);
+      overflow: auto;
+      border-radius: 24px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: linear-gradient(180deg, rgba(10, 16, 32, 0.98), rgba(13, 19, 39, 0.96));
+      box-shadow: 0 30px 80px rgba(2, 6, 23, 0.48);
+      padding: 22px;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .modal-header h2 {
+      margin: 0;
+      font-size: 1.4rem;
+    }
+
+    .modal-header p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      max-width: 840px;
+      line-height: 1.45;
+    }
+
+    .modal-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .modal-side {
+      display: grid;
+      gap: 12px;
+    }
+
+    .future-pillars {
+      display: grid;
+      gap: 10px;
+    }
+
+    .future-pillars .info-tile {
+      background: rgba(15, 23, 42, 0.78);
+    }
+
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .metrics, .transcript-summary, .modal-grid, .quantum-preview-note, .pipeline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 860px) {
+      .controls, .metrics, .transcript-summary, .chat-controls, .modal-grid, .quantum-preview-note, .pipeline-grid, .bloch-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 700px) {
+      .hero { flex-direction: column; align-items: flex-start; }
+      .app { padding: 18px 12px 24px; }
+      .modal-card { padding: 16px; }
+      .modal-header { flex-direction: column; }
+      .panel-actions { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="hero">
+      <div>
+        <h1>BB84 Encrypted Chat Demo</h1>
+        <p>Simulated BB84 key exchange with optional Eve intercept/resend, sample disclosure for QBER estimation, placeholder reconciliation and privacy amplification, encrypted chat, and photon polarization replay.</p>
+      </div>
+      <div class="badge">Quantum key distribution · browser demo</div>
+    </div>
+
+    <div class="layout">
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-title">
+            <h2>Session controls</h2>
+            <span class="subtle">Alice starts BB84 after both users join the same room. The classical channel is simulated and should be treated as authenticated for this teaching demo.</span>
+          </div>
+
+          <div class="controls">
+            <div class="field">
+              <label for="name">Display name</label>
+              <input id="name" placeholder="Your name" value="User" />
+            </div>
+            <div class="field">
+              <label for="roomId">Room ID</label>
+              <input id="roomId" placeholder="Room ID" value="demo-room" />
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button id="joinBtn">Join room</button>
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button id="bb84Btn">Run BB84</button>
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <label class="toggle"><input type="checkbox" id="eveToggle" /> Eve intercept/resend</label>
+            </div>
+          </div>
+
+          <div id="statusBox" class="status-box warn" style="margin-top:14px;">
+            <strong>Status</strong>
+            <div id="status" style="margin-top:6px;">Not connected</div>
+          </div>
+
+          <div class="metrics">
+            <div class="metric-card">
+              <span class="metric-label">Your role</span>
+              <span class="metric-value" id="roleValue">—</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Full QBER</span>
+              <span class="metric-value" id="qberValue">—</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Sifted bits</span>
+              <span class="metric-value" id="keptBitsValue">—</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Eve</span>
+              <span class="metric-value" id="eveValue">off</span>
+            </div>
+          </div>
+
+          <div class="pipeline-panel">
+            <div class="panel-title" style="margin-bottom:10px;">
+              <h3>BB84 key pipeline</h3>
+              <span class="subtle">Raw → sifted → disclosed test bits → reconciled bits → privacy-amplified final key</span>
+            </div>
+            <div class="pipeline-grid">
+              <div class="mini-stage"><span class="metric-label">Raw qubits</span><strong id="rawKeyValue">—</strong></div>
+              <div class="mini-stage"><span class="metric-label">Sifted bits</span><strong id="siftedKeyValue">—</strong></div>
+              <div class="mini-stage"><span class="metric-label">Test bits</span><strong id="testBitsValue">—</strong></div>
+              <div class="mini-stage"><span class="metric-label">Final key bits</span><strong id="finalKeyValue">—</strong></div>
+              <div class="mini-stage"><span class="metric-label">Sample QBER</span><strong id="sampleQberValue">—</strong></div>
+              <div class="mini-stage"><span class="metric-label">Reconciliation</span><strong id="ecStatusValue">Waiting</strong></div>
+              <div class="mini-stage"><span class="metric-label">Privacy amp.</span><strong id="paStatusValue">Waiting</strong></div>
+              <div class="mini-stage"><span class="metric-label">Auth note</span><strong id="authNoteValue">Simulated</strong></div>
+            </div>
+            <div id="pipelineNotes" class="footnote" style="margin-top:10px;">Run BB84 to populate the post-processing stages. In this demo, QBER estimation publicly reveals only a subset of sifted bits before a placeholder reconciliation/privacy-amplification stage derives the chat key.</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">
+            <h2>Chat</h2>
+            <span class="subtle">AES-GCM encrypted after BB84 key acceptance.</span>
+          </div>
+          <div id="messages" class="chat-box mono"></div>
+          <div class="chat-controls">
+            <input id="messageInput" placeholder="Type encrypted message..." />
+            <button id="sendBtn" style="min-width:132px;">Send</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">
+            <h2>Photon polarization replay</h2>
+            <div class="panel-actions">
+              <span class="subtle">Preview below · expand for a full quantum view.</span>
+              <button id="openReplayModalBtn" class="ghost-btn" style="width:auto;">Open replay window</button>
+            </div>
+          </div>
+          <div class="quantum-preview-note">
+            <div class="info-tile">
+              <strong>Compact replay preview</strong>
+              This panel now acts as a live session preview. Use the larger replay window for a roomier animation and future protocol-side visualizations.
+            </div>
+            <div class="info-tile">
+              <strong>Planned quantum pop-ups</strong>
+              The expanded window is designed so Bloch-sphere views, basis-comparison panels, and uncertainty/error visualizations can be added later without crowding the main chat layout.
+            </div>
+          </div>
+          <canvas id="vizCanvas" width="1000" height="300"></canvas>
+          <div id="vizLegend" class="legend-box subtle"></div>
+          <div class="footnote">Replay runs after BB84 and again when encrypted messages are sent or received. The expanded window mirrors the same session with more space.</div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="panel">
+          <div class="panel-title">
+            <h2>Per-qubit BB84 transcript</h2>
+            <span class="subtle">Alice preparation, Eve interception, Bob measurement, public sample disclosure, and final key decisions.</span>
+          </div>
+
+          <div class="transcript-summary">
+            <div class="summary-chip">
+              <span class="subtle">Generated qubits</span>
+              <b id="summaryGenerated">—</b>
+            </div>
+            <div class="summary-chip">
+              <span class="subtle">Kept indices</span>
+              <b id="summaryKept">—</b>
+            </div>
+            <div class="summary-chip">
+              <span class="subtle">Mismatches</span>
+              <b id="summaryMismatch">—</b>
+            </div>
+            <div class="summary-chip">
+              <span class="subtle">Disclosed test idx</span>
+              <b id="summaryTestIndices">—</b>
+            </div>
+            <div class="summary-chip">
+              <span class="subtle">Final key bits</span>
+              <b id="summaryFinalBits">—</b>
+            </div>
+            <div class="summary-chip">
+              <span class="subtle">Key status</span>
+              <b id="summaryKeyStatus">Waiting</b>
+            </div>
+            <div class="summary-chip">
+              <span class="subtle">Latest event</span>
+              <b id="summaryEvent">Idle</b>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Alice bit</th>
+                  <th>Alice basis</th>
+                  <th>Alice polarization</th>
+                  <th>Eve basis</th>
+                  <th>Eve result</th>
+                  <th>Bob basis</th>
+                  <th>Bob result</th>
+                  <th>Sift</th>
+                  <th>Test</th>
+                  <th>Outcome</th>
+                </tr>
+              </thead>
+              <tbody id="protocolTableBody">
+                <tr><td colspan="11" class="subtle" style="padding:16px;">Run BB84 to populate the detailed transcript.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">
+            <h3>Protocol event log</h3>
+            <button id="clearTranscriptBtn" class="ghost-btn">Clear log</button>
+          </div>
+          <div id="transcript" class="event-log mono"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="replayModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2>Quantum replay window</h2>
+          <p>Expanded photon-polarization playback for the current BB84 session. This modal is intended to become the home for future protocol-side views such as basis matching, qubit-by-qubit stepping, and richer state-space illustrations.</p>
+        </div>
+        <button id="closeReplayModalBtn" class="ghost-btn" style="width:auto;">Close</button>
+      </div>
+      <div class="modal-grid">
+        <div>
+          <canvas id="modalVizCanvas" width="1300" height="620"></canvas>
+          <div id="modalVizLegend" class="legend-box subtle"></div>
+        </div>
+        <div class="modal-side">
+          <div class="info-tile">
+            <strong>How to read this view</strong>
+            Alice prepares a polarization state, Eve optionally intercepts and resends, and Bob measures using his chosen basis. Kept rows correspond to matching Alice/Bob bases. A disclosed sample of the sifted key is publicly compared to estimate QBER before deriving the final chat key.
+          </div>
+          <div class="modal-panel">
+            <div class="mini-heading">Protocol stage overview</div>
+            <div id="modalProtocolSummary" class="subtle">Run BB84 to populate the protocol pipeline summary.</div>
+          </div>
+          <div class="modal-panel">
+            <div class="mini-heading">Basis agreement heatmap</div>
+            <canvas id="heatmapCanvas" width="540" height="210"></canvas>
+            <div id="heatmapLegend" class="legend-box subtle"></div>
+          </div>
+          <div class="modal-panel">
+            <div class="mini-heading">Step-through inspector</div>
+            <div class="inspector-controls">
+              <button id="prevQubitBtn" class="ghost-btn" style="width:auto;">Prev</button>
+              <button id="playQubitBtn" class="ghost-btn" style="width:auto;">Play</button>
+              <button id="nextQubitBtn" class="ghost-btn" style="width:auto;">Next</button>
+              <div id="inspectorCounter" class="subtle">Qubit — / —</div>
+            </div>
+            <div id="inspectorDetails" class="info-tile" style="margin-top:10px;">Run BB84 to inspect individual qubits.</div>
+          </div>
+          <div class="modal-panel">
+            <div class="mini-heading">Bloch-style state view</div>
+            <div class="bloch-grid">
+              <div class="bloch-card">
+                <div class="bloch-title">Alice prepared</div>
+                <div id="blochAlice" class="bloch-state">—</div>
+              </div>
+              <div class="bloch-card">
+                <div class="bloch-title">Eve state</div>
+                <div id="blochEve" class="bloch-state">—</div>
+              </div>
+              <div class="bloch-card">
+                <div class="bloch-title">Bob measured</div>
+                <div id="blochBob" class="bloch-state">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+
+    const els = {
+      name: document.getElementById("name"),
+      roomId: document.getElementById("roomId"),
+      joinBtn: document.getElementById("joinBtn"),
+      bb84Btn: document.getElementById("bb84Btn"),
+      eveToggle: document.getElementById("eveToggle"),
+      status: document.getElementById("status"),
+      statusBox: document.getElementById("statusBox"),
+      messages: document.getElementById("messages"),
+      transcript: document.getElementById("transcript"),
+      clearTranscriptBtn: document.getElementById("clearTranscriptBtn"),
+      messageInput: document.getElementById("messageInput"),
+      sendBtn: document.getElementById("sendBtn"),
+      vizCanvas: document.getElementById("vizCanvas"),
+      vizLegend: document.getElementById("vizLegend"),
+      openReplayModalBtn: document.getElementById("openReplayModalBtn"),
+      replayModal: document.getElementById("replayModal"),
+      closeReplayModalBtn: document.getElementById("closeReplayModalBtn"),
+      modalVizCanvas: document.getElementById("modalVizCanvas"),
+      modalVizLegend: document.getElementById("modalVizLegend"),
+      qberValue: document.getElementById("qberValue"),
+      keptBitsValue: document.getElementById("keptBitsValue"),
+      eveValue: document.getElementById("eveValue"),
+      roleValue: document.getElementById("roleValue"),
+      summaryGenerated: document.getElementById("summaryGenerated"),
+      summaryKept: document.getElementById("summaryKept"),
+      summaryMismatch: document.getElementById("summaryMismatch"),
+      summaryKeyStatus: document.getElementById("summaryKeyStatus"),
+      summaryEvent: document.getElementById("summaryEvent"),
+      protocolTableBody: document.getElementById("protocolTableBody"),
+      rawKeyValue: document.getElementById("rawKeyValue"),
+      siftedKeyValue: document.getElementById("siftedKeyValue"),
+      testBitsValue: document.getElementById("testBitsValue"),
+      finalKeyValue: document.getElementById("finalKeyValue"),
+      sampleQberValue: document.getElementById("sampleQberValue"),
+      ecStatusValue: document.getElementById("ecStatusValue"),
+      paStatusValue: document.getElementById("paStatusValue"),
+      authNoteValue: document.getElementById("authNoteValue"),
+      pipelineNotes: document.getElementById("pipelineNotes"),
+      summaryTestIndices: document.getElementById("summaryTestIndices"),
+      summaryFinalBits: document.getElementById("summaryFinalBits"),
+      modalProtocolSummary: document.getElementById("modalProtocolSummary"),
+      heatmapCanvas: document.getElementById("heatmapCanvas"),
+      heatmapLegend: document.getElementById("heatmapLegend"),
+      prevQubitBtn: document.getElementById("prevQubitBtn"),
+      playQubitBtn: document.getElementById("playQubitBtn"),
+      nextQubitBtn: document.getElementById("nextQubitBtn"),
+      inspectorCounter: document.getElementById("inspectorCounter"),
+      inspectorDetails: document.getElementById("inspectorDetails"),
+      blochAlice: document.getElementById("blochAlice"),
+      blochEve: document.getElementById("blochEve"),
+      blochBob: document.getElementById("blochBob"),
+    };
+
+    let currentRoom = null;
+    let myRole = null;
+    let sessionKey = null;
+    let roomState = null;
+    let lastProtocol = null;
+    let vizRunId = 0;
+    let modalVizRunId = 0;
+    let lastVizCaption = "Most recent BB84 replay";
+    let protocolStages = null;
+    let selectedQubitIndex = 0;
+    let inspectorPlaying = false;
+    let inspectorTimer = null;
+
+    const ctx = els.vizCanvas.getContext("2d");
+    const modalCtx = els.modalVizCanvas.getContext("2d");
+    const heatmapCtx = els.heatmapCanvas.getContext("2d");
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function setStatus(text, tone = "warn") {
+      els.status.textContent = text;
+      els.statusBox.className = `status-box ${tone}`;
+    }
+
+    function setSummaryEvent(text) {
+      els.summaryEvent.textContent = text;
+    }
+
+    function logChat(text) {
+      els.messages.textContent += text + "\n";
+      els.messages.scrollTop = els.messages.scrollHeight;
+    }
+
+    function logTranscript(text) {
+      const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      els.transcript.textContent += `[${timestamp}] ${text}\n`;
+      els.transcript.scrollTop = els.transcript.scrollHeight;
+    }
+
+    function resetTranscriptTable(message = "Run BB84 to populate the detailed transcript.") {
+      els.protocolTableBody.innerHTML = `<tr><td colspan="11" class="subtle" style="padding:16px;">${escapeHtml(message)}</td></tr>`;
+      els.summaryGenerated.textContent = "—";
+      els.summaryKept.textContent = "—";
+      els.summaryMismatch.textContent = "—";
+      els.summaryTestIndices.textContent = "—";
+      els.summaryFinalBits.textContent = "—";
+      els.summaryKeyStatus.textContent = "Waiting";
+    }
+
+    function randBit() {
+      const arr = new Uint8Array(1);
+      crypto.getRandomValues(arr);
+      return arr[0] % 2;
+    }
+
+    function randomBits(n) {
+      return Array.from({ length: n }, () => randBit());
+    }
+
+    function randomBases(n) {
+      return Array.from({ length: n }, () => (randBit() === 0 ? "+" : "x"));
+    }
+
+    function angleForState(bit, basis) {
+      if (basis === "+") return bit === 0 ? 90 : 0;
+      return bit === 0 ? 45 : 135;
+    }
+
+    function stateLabel(bit, basis) {
+      if (basis == null || bit == null) return "—";
+      if (basis === "+") return bit === 0 ? "vertical (90°)" : "horizontal (0°)";
+      return bit === 0 ? "diagonal (45°)" : "anti-diagonal (135°)";
+    }
+
+    function pillHtml(text, tone = "info") {
+      return `<span class="pill ${tone}">${escapeHtml(text)}</span>`;
+    }
+
+    function ketLabel(bit, basis) {
+      if (basis == null || bit == null) return "—";
+      if (basis === "+") return bit === 0 ? "|1⟩ / |V⟩" : "|0⟩ / |H⟩";
+      return bit === 0 ? "|+⟩ / |D⟩" : "|−⟩ / |A⟩";
+    }
+
+    function computeDisclosureSample(keep, aliceSifted, bobSifted) {
+      const siftedLength = aliceSifted.length;
+      if (!siftedLength) return { sampleLocalIndices: [], sampleKeepIndices: [], aliceTestBits: [], bobTestBits: [], sampleQBER: 1 };
+      let sampleCount = 0;
+      if (siftedLength >= 6) sampleCount = Math.max(1, Math.min(Math.floor(siftedLength / 4), siftedLength - 4));
+      const sampleLocalIndices = [];
+      for (let j = 0; j < sampleCount; j++) {
+        const idx = Math.floor(((j + 1) * (siftedLength + 1)) / (sampleCount + 1)) - 1;
+        if (idx >= 0 && idx < siftedLength && !sampleLocalIndices.includes(idx)) sampleLocalIndices.push(idx);
+      }
+      const aliceTestBits = sampleLocalIndices.map(i => aliceSifted[i]);
+      const bobTestBits = sampleLocalIndices.map(i => bobSifted[i]);
+      const sampleKeepIndices = sampleLocalIndices.map(i => keep[i]);
+      const sampleQBER = sampleLocalIndices.length ? estimateQBER(aliceTestBits, bobTestBits) : 0;
+      return { sampleLocalIndices, sampleKeepIndices, aliceTestBits, bobTestBits, sampleQBER };
+    }
+
+    function removeSampleBits(bits, sampleLocalIndices) {
+      const drop = new Set(sampleLocalIndices);
+      return bits.filter((_, idx) => !drop.has(idx));
+    }
+
+    function reconcileBitsPlaceholder(aliceRemaining, bobRemaining) {
+      const mismatches = [];
+      for (let i = 0; i < Math.min(aliceRemaining.length, bobRemaining.length); i++) {
+        if (aliceRemaining[i] !== bobRemaining[i]) mismatches.push(i);
+      }
+      const correctedBits = aliceRemaining.slice();
+      const syndromeBlocks = Math.ceil(aliceRemaining.length / 4);
+      const status = mismatches.length
+        ? `Idealized parity-reconciliation placeholder corrected ${mismatches.length} residual mismatch${mismatches.length === 1 ? "" : "es"}.`
+        : "No residual mismatches remained after sample disclosure.";
+      return { correctedBits, mismatches, syndromeBlocks, status };
+    }
+
+    async function privacyAmplifyBits(correctedBits) {
+      if (!correctedBits.length) return { finalBits: [], digestHex: "" };
+      const bytes = new TextEncoder().encode(correctedBits.join(""));
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      const arr = Array.from(new Uint8Array(digest));
+      const digestHex = arr.map(v => v.toString(16).padStart(2, "0")).join("");
+      const bitStream = arr.flatMap(v => v.toString(2).padStart(8, "0").split("").map(Number));
+      const outLen = Math.max(8, Math.min(32, Math.floor(correctedBits.length / 2) || correctedBits.length));
+      return { finalBits: bitStream.slice(0, outLen), digestHex };
+    }
+
+    function updatePipelineUI(stages = null) {
+      if (!stages) {
+        els.rawKeyValue.textContent = "—";
+        els.siftedKeyValue.textContent = "—";
+        els.testBitsValue.textContent = "—";
+        els.finalKeyValue.textContent = "—";
+        els.sampleQberValue.textContent = "—";
+        els.ecStatusValue.textContent = "Waiting";
+        els.paStatusValue.textContent = "Waiting";
+        els.authNoteValue.textContent = "Simulated";
+        els.pipelineNotes.textContent = "Run BB84 to populate the post-processing stages. In this demo, QBER estimation publicly reveals only a subset of sifted bits before a placeholder reconciliation/privacy-amplification stage derives the chat key.";
+        els.modalProtocolSummary.textContent = "Run BB84 to populate the protocol pipeline summary.";
+        return;
+      }
+      els.rawKeyValue.textContent = String(stages.rawCount);
+      els.siftedKeyValue.textContent = String(stages.siftedCount);
+      els.testBitsValue.textContent = stages.sampleKeepIndices.length ? `${stages.sampleKeepIndices.join(", ")} (${stages.sampleKeepIndices.length})` : "none";
+      els.finalKeyValue.textContent = stages.finalBits.length ? `${stages.finalBits.join("")} (${stages.finalBits.length})` : "none";
+      els.sampleQberValue.textContent = stages.sampleQBER.toFixed(3);
+      els.ecStatusValue.textContent = stages.reconciliationSummary;
+      els.paStatusValue.textContent = stages.finalBits.length ? `Compressed to ${stages.finalBits.length} bits` : "No output";
+      els.authNoteValue.textContent = "Assumed authenticated";
+      els.pipelineNotes.textContent = stages.notes;
+      els.modalProtocolSummary.innerHTML = `<strong>Raw:</strong> ${stages.rawCount} qubits<br><strong>Sifted:</strong> ${stages.siftedCount} bits<br><strong>Disclosed sample:</strong> ${stages.sampleKeepIndices.length ? stages.sampleKeepIndices.join(", ") : "none"}<br><strong>Sample QBER:</strong> ${stages.sampleQBER.toFixed(3)}<br><strong>Reconciled bits:</strong> ${stages.correctedBits.length}<br><strong>Final key:</strong> ${stages.finalBits.length ? stages.finalBits.join("") : "none"}`;
+    }
+
+    function qubitStateText(label, bit, basis, extra = "") {
+      if (bit == null || basis == null) return `${label}\n—`;
+      return `${label}\n${ketLabel(bit, basis)}\nBasis ${basis} · bit ${bit}\n${stateLabel(bit, basis)}${extra ? `\n${extra}` : ""}`;
+    }
+
+    function updateInspector(index = 0) {
+      if (!lastProtocol) {
+        els.inspectorCounter.textContent = "Qubit — / —";
+        els.inspectorDetails.textContent = "Run BB84 to inspect individual qubits.";
+        els.blochAlice.textContent = "—";
+        els.blochEve.textContent = "—";
+        els.blochBob.textContent = "—";
+        drawHeatmap();
+        return;
+      }
+      selectedQubitIndex = Math.max(0, Math.min(index, lastProtocol.aliceBits.length - 1));
+      const i = selectedQubitIndex;
+      const keepSet = new Set(lastProtocol.keep || []);
+      const sampleSet = new Set(protocolStages?.sampleKeepIndices || []);
+      const kept = keepSet.has(i);
+      const disclosed = sampleSet.has(i);
+      const mismatch = kept && lastProtocol.aliceBits[i] !== lastProtocol.bobResults[i];
+      els.inspectorCounter.textContent = `Qubit ${i + 1} / ${lastProtocol.aliceBits.length}`;
+      els.inspectorDetails.innerHTML = `<strong>Transcript row ${i}</strong><br>Alice prepared bit <span class="mono">${lastProtocol.aliceBits[i]}</span> in basis <span class="mono">${lastProtocol.aliceBases[i]}</span> (${escapeHtml(stateLabel(lastProtocol.aliceBits[i], lastProtocol.aliceBases[i]))}).<br>${lastProtocol.eveEnabled ? `Eve used basis <span class="mono">${lastProtocol.eveBases[i]}</span> and resent bit <span class="mono">${lastProtocol.eveResults[i]}</span>.<br>` : "Eve is off for this run.<br>"}Bob measured in basis <span class="mono">${lastProtocol.bobBases[i]}</span> and obtained <span class="mono">${lastProtocol.bobResults[i]}</span>.<br>${kept ? `This qubit survived sifting.${disclosed ? " It was publicly disclosed as a test bit." : " It remained available for the key pipeline."}` : "This qubit was discarded because Alice and Bob chose different bases."}${kept ? `<br>Outcome: ${mismatch ? "kept mismatch" : "kept match"}.` : ""}`;
+      els.blochAlice.textContent = qubitStateText("Prepared state", lastProtocol.aliceBits[i], lastProtocol.aliceBases[i]);
+      els.blochEve.textContent = lastProtocol.eveEnabled
+        ? qubitStateText("Intercept/resend", lastProtocol.eveResults[i], lastProtocol.eveBases[i], lastProtocol.eveBases[i] === lastProtocol.aliceBases[i] ? "Basis matched Alice" : "Basis differed from Alice")
+        : "Intercept/resend\nEve disabled";
+      els.blochBob.textContent = qubitStateText("Measured state", lastProtocol.bobResults[i], lastProtocol.bobBases[i], kept ? (mismatch ? "Contributes error to QBER" : "Consistent with Alice") : "Discarded during sifting");
+      drawHeatmap();
+    }
+
+    function drawHeatmap() {
+      const canvas = els.heatmapCanvas;
+      heatmapCtx.clearRect(0,0,canvas.width,canvas.height);
+      heatmapCtx.fillStyle = "#0d1428";
+      heatmapCtx.fillRect(0,0,canvas.width,canvas.height);
+      if (!lastProtocol) {
+        heatmapCtx.fillStyle = "#cbd5e1";
+        heatmapCtx.font = "16px Arial";
+        heatmapCtx.fillText("Run BB84 to populate the basis heatmap.", 18, 34);
+        els.heatmapLegend.textContent = "Cells will show discarded qubits, kept matches, disclosed sample bits, and kept errors.";
+        return;
+      }
+      const n = lastProtocol.aliceBits.length;
+      const cols = Math.min(8, n);
+      const rows = Math.ceil(n / cols);
+      const pad = 18;
+      const gap = 6;
+      const cellW = Math.max(34, Math.floor((canvas.width - pad*2 - gap*(cols-1)) / cols));
+      const cellH = Math.max(28, Math.floor((canvas.height - 56 - gap*(rows-1)) / Math.max(rows,1)));
+      const keepSet = new Set(lastProtocol.keep || []);
+      const sampleSet = new Set(protocolStages?.sampleKeepIndices || []);
+      for (let i=0;i<n;i++) {
+        const col=i%cols, row=Math.floor(i/cols);
+        const x=pad+col*(cellW+gap), y=pad+row*(cellH+gap);
+        const kept=keepSet.has(i);
+        const disclosed=sampleSet.has(i);
+        const mismatch=kept && lastProtocol.aliceBits[i]!==lastProtocol.bobResults[i];
+        heatmapCtx.fillStyle = disclosed ? '#7c3aed' : (!kept ? '#475569' : (mismatch ? '#dc2626' : '#16a34a'));
+        heatmapCtx.fillRect(x,y,cellW,cellH);
+        if (i===selectedQubitIndex) { heatmapCtx.strokeStyle='#f8fafc'; heatmapCtx.lineWidth=3; heatmapCtx.strokeRect(x-2,y-2,cellW+4,cellH+4); }
+        heatmapCtx.fillStyle='#f8fafc'; heatmapCtx.font='12px Arial'; heatmapCtx.fillText(String(i), x+8, y+18);
+        heatmapCtx.fillText(`${lastProtocol.aliceBases[i]}→${lastProtocol.bobBases[i]}`, x+8, y+cellH-8);
+      }
+      els.heatmapLegend.textContent = 'Gray = discarded basis mismatch · green = kept match · red = kept error · purple = publicly disclosed test bit';
+    }
+
+    function stopInspectorPlayback() {
+      inspectorPlaying = false;
+      if (inspectorTimer) clearInterval(inspectorTimer);
+      inspectorTimer = null;
+      els.playQubitBtn.textContent = 'Play';
+    }
+
+    function toggleInspectorPlayback() {
+      if (!lastProtocol) return;
+      if (inspectorPlaying) { stopInspectorPlayback(); return; }
+      inspectorPlaying = true;
+      els.playQubitBtn.textContent = 'Pause';
+      inspectorTimer = setInterval(() => {
+        if (!lastProtocol) return stopInspectorPlayback();
+        const next = (selectedQubitIndex + 1) % lastProtocol.aliceBits.length;
+        updateInspector(next);
+      }, 950);
+    }
+
+
+    function renderProtocolTable(protocol, keyStatusText = "Waiting") {
+      if (!protocol) {
+        resetTranscriptTable();
+        return;
+      }
+
+      const keepSet = new Set(protocol.keep || []);
+      const sampleSet = new Set(protocol.sampleKeepIndices || []);
+      let mismatchCount = 0;
+      const rows = [];
+
+      for (let i = 0; i < protocol.aliceBits.length; i++) {
+        const kept = keepSet.has(i);
+        const disclosed = sampleSet.has(i);
+        const aliceBit = protocol.aliceBits[i];
+        const aliceBasis = protocol.aliceBases[i];
+        const bobBasis = protocol.bobBases?.[i];
+        const bobResult = protocol.bobResults?.[i];
+        const eveBasis = protocol.eveBases?.[i];
+        const eveResult = protocol.eveResults?.[i];
+        const mismatch = kept && aliceBit !== bobResult;
+        if (mismatch) mismatchCount++;
+
+        let outcome = pillHtml("discarded", "warn");
+        if (kept && !mismatch) outcome = pillHtml(disclosed ? "test · match" : "kept · match", disclosed ? "info" : "good");
+        if (kept && mismatch) outcome = pillHtml(disclosed ? "test · error" : "kept · error", "bad");
+
+        rows.push(`
+          <tr>
+            <td class="mono">${i}</td>
+            <td class="mono">${aliceBit}</td>
+            <td>${aliceBasis}</td>
+            <td>${escapeHtml(stateLabel(aliceBit, aliceBasis))}</td>
+            <td>${eveBasis == null ? pillHtml("off", "info") : escapeHtml(eveBasis)}</td>
+            <td>${eveResult == null ? "—" : `<span class="mono">${eveResult}</span>`}</td>
+            <td>${escapeHtml(bobBasis ?? "—")}</td>
+            <td>${bobResult == null ? "—" : `<span class="mono">${bobResult}</span>`}</td>
+            <td>${kept ? pillHtml("keep", "good") : pillHtml("drop", "warn")}</td>
+            <td>${disclosed ? pillHtml("reveal", "info") : (kept ? pillHtml("secret", "good") : "—")}</td>
+            <td>${outcome}</td>
+          </tr>
+        `);
+      }
+
+      els.protocolTableBody.innerHTML = rows.join("");
+      els.summaryGenerated.textContent = String(protocol.aliceBits.length);
+      els.summaryKept.textContent = protocol.keep.length ? protocol.keep.join(", ") : "none";
+      els.summaryMismatch.textContent = String(mismatchCount);
+      els.summaryTestIndices.textContent = protocol.sampleKeepIndices?.length ? protocol.sampleKeepIndices.join(", ") : "none";
+      els.summaryFinalBits.textContent = protocol.finalBits?.length ? `${protocol.finalBits.join("")} (${protocol.finalBits.length})` : "none";
+      els.summaryKeyStatus.textContent = keyStatusText;
+    }
+
+    function measureWithEve(aliceBits, aliceBases, bobBases, eveEnabled) {
+      const eveBases = [];
+      const eveResults = [];
+      const bobResults = [];
+
+      for (let i = 0; i < aliceBits.length; i++) {
+        if (!eveEnabled) {
+          eveBases.push(null);
+          eveResults.push(null);
+          bobResults.push(aliceBases[i] === bobBases[i] ? aliceBits[i] : randBit());
+          continue;
+        }
+
+        const eveBasis = randBit() === 0 ? "+" : "x";
+        const eveResult = eveBasis === aliceBases[i] ? aliceBits[i] : randBit();
+        const bobResult = eveBasis === bobBases[i] ? eveResult : randBit();
+
+        eveBases.push(eveBasis);
+        eveResults.push(eveResult);
+        bobResults.push(bobResult);
+      }
+
+      return { eveBases, eveResults, bobResults };
+    }
+
+    function siftKey(aliceBits, aliceBases, bobBases, bobResults) {
+      const keep = [];
+      const aliceSifted = [];
+      const bobSifted = [];
+
+      for (let i = 0; i < aliceBits.length; i++) {
+        if (aliceBases[i] === bobBases[i]) {
+          keep.push(i);
+          aliceSifted.push(aliceBits[i]);
+          bobSifted.push(bobResults[i]);
+        }
+      }
+
+      return { keep, aliceSifted, bobSifted };
+    }
+
+    function estimateQBER(aliceSifted, bobSifted) {
+      if (aliceSifted.length === 0) return 1;
+      let mismatches = 0;
+      for (let i = 0; i < aliceSifted.length; i++) {
+        if (aliceSifted[i] !== bobSifted[i]) mismatches++;
+      }
+      return mismatches / aliceSifted.length;
+    }
+
+    async function deriveAesKeyFromBits(bits) {
+      const bitString = bits.join("");
+      const bytes = new TextEncoder().encode(bitString);
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return crypto.subtle.importKey(
+        "raw",
+        digest,
+        { name: "AES-GCM" },
+        false,
+        ["encrypt", "decrypt"]
+      );
+    }
+
+    function bytesToBase64(bytes) {
+      let binary = "";
+      const arr = new Uint8Array(bytes);
+      for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i]);
+      return btoa(binary);
+    }
+
+    function base64ToBytes(base64) {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+
+    async function encryptMessage(plaintext) {
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const encoded = new TextEncoder().encode(plaintext);
+      const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        sessionKey,
+        encoded
+      );
+      return {
+        iv: bytesToBase64(iv),
+        ciphertext: bytesToBase64(ciphertext)
+      };
+    }
+
+    async function decryptMessage(payload) {
+      const iv = base64ToBytes(payload.iv);
+      const ciphertext = base64ToBytes(payload.ciphertext);
+      const plaintextBuffer = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv },
+        sessionKey,
+        ciphertext
+      );
+      return new TextDecoder().decode(plaintextBuffer);
+    }
+
+    function updateMetrics(qber = null, keptBits = null, eveEnabled = null) {
+      els.qberValue.textContent = qber == null ? "—" : qber.toFixed(3);
+      els.keptBitsValue.textContent = keptBits == null ? "—" : String(keptBits);
+      els.eveValue.textContent = eveEnabled == null ? "off" : (eveEnabled ? "on" : "off");
+      els.roleValue.textContent = myRole || "—";
+    }
+
+    function drawPolarLineOn(drawCtx, x, y, length, angleDeg, label, emphasis = false, scale = 1) {
+      const rad = angleDeg * Math.PI / 180;
+      const dx = Math.cos(rad) * length / 2;
+      const dy = Math.sin(rad) * length / 2;
+
+      drawCtx.save();
+      drawCtx.lineWidth = emphasis ? 4 * scale : 2.2 * scale;
+      drawCtx.strokeStyle = emphasis ? "#1d4ed8" : "#222";
+      drawCtx.beginPath();
+      drawCtx.moveTo(x - dx, y + dy);
+      drawCtx.lineTo(x + dx, y - dy);
+      drawCtx.stroke();
+      drawCtx.restore();
+
+      drawCtx.fillStyle = "#333";
+      drawCtx.font = `${Math.round(12 * scale)}px Arial`;
+      drawCtx.fillText(label, x - (18 * scale), y + (24 * scale));
+    }
+
+    function drawStationLabelsOn(drawCtx, hasEve, dims) {
+      drawCtx.fillStyle = "#111";
+      drawCtx.font = `bold ${Math.round(16 * dims.scale)}px Arial`;
+      drawCtx.fillText("Alice", dims.aliceX - 40 * dims.scale, dims.topLabelY);
+      if (hasEve) drawCtx.fillText("Eve", dims.eveX - 28 * dims.scale, dims.topLabelY);
+      drawCtx.fillText("Bob", dims.bobX - 28 * dims.scale, dims.topLabelY);
+
+      drawCtx.font = `${Math.round(13 * dims.scale)}px Arial`;
+      drawCtx.fillText("Prepared polarization", dims.aliceX - 90 * dims.scale, dims.subLabelY);
+      if (hasEve) drawCtx.fillText("Intercept / resend", dims.eveX - 88 * dims.scale, dims.subLabelY);
+      drawCtx.fillText("Measurement basis", dims.bobX - 88 * dims.scale, dims.subLabelY);
+    }
+
+    function drawPulseOn(drawCtx, progress, y, hasEve, dims) {
+      const x1 = dims.aliceBeamX;
+      const midX = dims.eveBeamX;
+      const x3 = dims.bobBeamX;
+
+      drawCtx.save();
+      drawCtx.strokeStyle = "#94a3b8";
+      drawCtx.lineWidth = 1.5 * dims.scale;
+      drawCtx.setLineDash([6 * dims.scale, 6 * dims.scale]);
+
+      if (hasEve) {
+        drawCtx.beginPath();
+        drawCtx.moveTo(x1, y);
+        drawCtx.lineTo(midX, y);
+        drawCtx.stroke();
+
+        drawCtx.beginPath();
+        drawCtx.moveTo(midX, y);
+        drawCtx.lineTo(x3, y);
+        drawCtx.stroke();
+      } else {
+        drawCtx.beginPath();
+        drawCtx.moveTo(x1, y);
+        drawCtx.lineTo(x3, y);
+        drawCtx.stroke();
+      }
+      drawCtx.restore();
+
+      drawCtx.fillStyle = "#dc2626";
+      const pulseX = hasEve
+        ? (progress < 0.5
+            ? x1 + (midX - x1) * (progress / 0.5)
+            : midX + (x3 - midX) * ((progress - 0.5) / 0.5))
+        : x1 + (x3 - x1) * progress;
+
+      drawCtx.beginPath();
+      drawCtx.arc(pulseX, y, 6 * dims.scale, 0, Math.PI * 2);
+      drawCtx.fill();
+    }
+
+    function getVizDimensions(canvas, total, hasEve) {
+      const width = canvas.width;
+      const height = canvas.height;
+      const scale = Math.min(width / 1000, height / 340);
+      const rowStartY = Math.max(96 * scale, 118 * scale);
+      const rowGap = Math.min(52 * scale, Math.max(24 * scale, (height - rowStartY - 54 * scale) / Math.max(total - 1, 1)));
+      return {
+        width,
+        height,
+        scale,
+        rowStartY,
+        rowGap,
+        aliceX: 120 * scale,
+        eveX: hasEve ? width / 2 : null,
+        bobX: width - 130 * scale,
+        aliceBeamX: 170 * scale,
+        eveBeamX: hasEve ? width / 2 : null,
+        bobBeamX: width - 170 * scale,
+        topLabelY: 40 * scale,
+        subLabelY: 62 * scale,
+        footerY: height - 18 * scale,
+      };
+    }
+
+    function clearVizOn(drawCtx, canvas) {
+      drawCtx.clearRect(0, 0, canvas.width, canvas.height);
+      drawCtx.fillStyle = "#fcfcff";
+      drawCtx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function playProtocolAnimationOn(canvas, drawCtx, legendEl, protocol, caption, target) {
+      if (!protocol) return;
+      if (target === "preview") vizRunId += 1;
+      if (target === "modal") modalVizRunId += 1;
+      const runId = target === "preview" ? vizRunId : modalVizRunId;
+      const total = Math.min(protocol.aliceBits.length, 8);
+      const hasEve = !!protocol.eveEnabled;
+      const itemDuration = 560;
+      const start = performance.now();
+      const dims = getVizDimensions(canvas, total, hasEve);
+
+      legendEl.textContent =
+        `${caption}. Showing ${total} representative photons. ` +
+        `Kept indices: ${protocol.keep.slice(0, 12).join(", ") || "none"}. ` +
+        `QBER=${protocol.qber.toFixed(3)}.`;
+
+      function frame(now) {
+        const activeRunId = target === "preview" ? vizRunId : modalVizRunId;
+        if (runId !== activeRunId) return;
+
+        clearVizOn(drawCtx, canvas);
+        drawStationLabelsOn(drawCtx, hasEve, dims);
+
+        const elapsed = now - start;
+        const index = Math.min(total - 1, Math.floor(elapsed / itemDuration));
+        const localT = (elapsed % itemDuration) / itemDuration;
+
+        drawCtx.fillStyle = "#555";
+        drawCtx.font = `${Math.round(13 * dims.scale)}px Arial`;
+        drawCtx.fillText("Polarization states: +/0 = vertical, +/1 = horizontal, x/0 = 45°, x/1 = 135°", 30 * dims.scale, dims.footerY);
+
+        for (let i = 0; i < total; i++) {
+          const y = dims.rowStartY + i * dims.rowGap;
+          const keep = protocol.keep.includes(i);
+          const alpha = i < index ? 0.35 : (i === index ? 1 : 0.12);
+          drawCtx.globalAlpha = alpha;
+
+          drawPolarLineOn(drawCtx, dims.aliceX, y, 28 * dims.scale, angleForState(protocol.aliceBits[i], protocol.aliceBases[i]), `#${i}`, keep, dims.scale);
+
+          if (hasEve && protocol.eveBases?.[i] != null && protocol.eveResults?.[i] != null) {
+            drawPolarLineOn(drawCtx, dims.eveX, y, 28 * dims.scale, angleForState(protocol.eveResults[i], protocol.eveBases[i]), "E", false, dims.scale);
+          }
+
+          drawPolarLineOn(drawCtx, dims.bobX, y, 28 * dims.scale, angleForState(protocol.bobResults[i], protocol.bobBases[i]), keep ? "keep" : "drop", keep, dims.scale);
+
+          if (i === index) {
+            drawPulseOn(drawCtx, localT, y, hasEve, dims);
+          }
+
+          if (keep) {
+            drawCtx.fillStyle = protocol.aliceBits[i] === protocol.bobResults[i] ? "#166534" : "#b91c1c";
+            drawCtx.font = `${Math.round(12 * dims.scale)}px Arial`;
+            drawCtx.fillText(protocol.aliceBits[i] === protocol.bobResults[i] ? "match" : "error", dims.bobX + 55 * dims.scale, y + 4 * dims.scale);
+          }
+
+          drawCtx.globalAlpha = 1;
+        }
+
+        if (elapsed < total * itemDuration + 150) {
+          requestAnimationFrame(frame);
+        }
+      }
+
+      requestAnimationFrame(frame);
+    }
+
+    function playProtocolAnimation(protocol, caption = "Most recent BB84 replay") {
+      if (!protocol) return;
+      lastVizCaption = caption;
+      playProtocolAnimationOn(els.vizCanvas, ctx, els.vizLegend, protocol, caption, "preview");
+      if (els.replayModal.classList.contains("open")) {
+        playProtocolAnimationOn(els.modalVizCanvas, modalCtx, els.modalVizLegend, protocol, caption, "modal");
+      }
+    }
+
+    function replayForMessage(directionLabel) {
+      if (!lastProtocol) return;
+      playProtocolAnimation(lastProtocol, `${directionLabel}: representative replay using current BB84 session`);
+    }
+
+    function openReplayModal() {
+      els.replayModal.classList.add("open");
+      els.replayModal.setAttribute("aria-hidden", "false");
+      if (lastProtocol) {
+        playProtocolAnimationOn(els.modalVizCanvas, modalCtx, els.modalVizLegend, lastProtocol, lastVizCaption, "modal");
+        updateInspector(selectedQubitIndex);
+      } else {
+        clearVizOn(modalCtx, els.modalVizCanvas);
+        els.modalVizLegend.textContent = "Run BB84 to populate the enlarged replay window.";
+      }
+    }
+
+    function closeReplayModal() {
+      els.replayModal.classList.remove("open");
+      els.replayModal.setAttribute("aria-hidden", "true");
+      modalVizRunId += 1;
+      stopInspectorPlayback();
+    }
+
+    els.openReplayModalBtn.onclick = openReplayModal;
+    els.closeReplayModalBtn.onclick = closeReplayModal;
+    els.replayModal.onclick = (event) => {
+      if (event.target === els.replayModal) closeReplayModal();
+    };
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && els.replayModal.classList.contains("open")) closeReplayModal();
+    });
+    els.prevQubitBtn.onclick = () => updateInspector(selectedQubitIndex - 1);
+    els.nextQubitBtn.onclick = () => updateInspector(selectedQubitIndex + 1);
+    els.playQubitBtn.onclick = () => toggleInspectorPlayback();
+
+    els.clearTranscriptBtn.onclick = () => {
+      els.transcript.textContent = "";
+      setSummaryEvent("Log cleared");
+    };
+
+    els.joinBtn.onclick = () => {
+      currentRoom = els.roomId.value.trim();
+      const name = els.name.value.trim() || "User";
+      socket.emit("join-room", { roomId: currentRoom, name });
+      setStatus(`Joined room request sent for "${currentRoom}"`, "warn");
+      setSummaryEvent("Joining room");
+      logTranscript(`Join requested for room "${currentRoom}" as ${name}.`);
+    };
+
+    els.bb84Btn.onclick = async () => {
+      if (!currentRoom) {
+        setStatus("Join a room first.", "warn");
+        return;
+      }
+
+      if (myRole !== "alice") {
+        setStatus("Wait for Alice to start BB84 first.", "warn");
+        return;
+      }
+
+      if (!roomState || !roomState.bob) {
+        setStatus("Waiting for Bob to join before starting BB84.", "warn");
+        return;
+      }
+
+      const n = 24;
+      const aliceBits = randomBits(n);
+      const aliceBases = randomBases(n);
+      const eveEnabled = !!els.eveToggle.checked;
+
+      els.transcript.textContent = "";
+      sessionKey = null;
+      lastProtocol = null;
+      protocolStages = null;
+      stopInspectorPlayback();
+      updateMetrics(null, null, eveEnabled);
+      updatePipelineUI(null);
+      resetTranscriptTable("BB84 in progress. Waiting for Bob's basis choices and results.");
+      setSummaryEvent("Alice generated qubits");
+
+      logTranscript("=== Alice generated BB84 state ===");
+      logTranscript("aliceBits  = " + JSON.stringify(aliceBits));
+      logTranscript("aliceBases = " + JSON.stringify(aliceBases));
+      logTranscript("eveEnabled = " + JSON.stringify(eveEnabled));
+
+      socket.emit("start-bb84", {
+        roomId: currentRoom,
+        payload: { aliceBits, aliceBases, eveEnabled }
+      });
+
+      setStatus("BB84 started. Waiting for Bob's measurement...", "warn");
+    };
+
+    els.sendBtn.onclick = async () => {
+      const text = els.messageInput.value.trim();
+      if (!text) return;
+
+      if (!currentRoom) {
+        setStatus("Join a room first.", "warn");
+        return;
+      }
+
+      if (!sessionKey) {
+        if (myRole === "alice") {
+          setStatus("Click Run BB84 first.", "warn");
+        } else {
+          setStatus("Wait for Alice to run BB84 first.", "warn");
+        }
+        return;
+      }
+
+      const encrypted = await encryptMessage(text);
+      socket.emit("send-message", {
+        roomId: currentRoom,
+        message: {
+          sender: els.name.value.trim() || "User",
+          iv: encrypted.iv,
+          ciphertext: encrypted.ciphertext
+        }
+      });
+
+      replayForMessage("Message sent");
+      logChat(`[you -> encrypted] ${text}`);
+      logTranscript(`Encrypted outbound message emitted by ${els.name.value.trim() || "User"}.`);
+      setSummaryEvent("Encrypted message sent");
+      els.messageInput.value = "";
+    };
+
+    socket.on("room-state", (state) => {
+      roomState = state;
+
+      if (socket.id === state.alice) myRole = "alice";
+      else if (socket.id === state.bob) myRole = "bob";
+      else myRole = "observer";
+
+      els.bb84Btn.disabled = myRole !== "alice";
+      updateMetrics(null, null, els.eveToggle.checked);
+      updatePipelineUI(protocolStages);
+      setStatus(
+        `Connected as ${myRole}. Members: ${state.members.map(m => m.name).join(", ")}`,
+        "good"
+      );
+      setSummaryEvent("Room synchronized");
+      logTranscript(`Room state updated. Role=${myRole}. Members=${state.members.map(m => m.name).join(", ")}.`);
+    });
+
+    socket.on("bb84-from-alice", ({ aliceBits, aliceBases, eveEnabled }) => {
+      if (myRole !== "bob") return;
+
+      const bobBases = randomBases(aliceBits.length);
+      const { eveBases, eveResults, bobResults } = measureWithEve(
+        aliceBits, aliceBases, bobBases, eveEnabled
+      );
+
+      logTranscript("=== Bob measured Alice's qubits ===");
+      logTranscript("bobBases   = " + JSON.stringify(bobBases));
+      logTranscript("bobResults = " + JSON.stringify(bobResults));
+      if (eveEnabled) {
+        logTranscript("eveBases   = " + JSON.stringify(eveBases));
+        logTranscript("eveResults = " + JSON.stringify(eveResults));
+      }
+      setSummaryEvent("Bob measured incoming qubits");
+
+      socket.emit("bb84-from-bob", {
+        roomId: currentRoom,
+        payload: { bobBases, bobResults, eveBases, eveResults }
+      });
+    });
+
+    socket.on("bb84-finalize", async ({ aliceBits, aliceBases, eveEnabled, eveBases, eveResults, bobBases, bobResults }) => {
+      const { keep, aliceSifted, bobSifted } = siftKey(
+        aliceBits, aliceBases, bobBases, bobResults
+      );
+
+      const qber = estimateQBER(aliceSifted, bobSifted);
+      const disclosure = computeDisclosureSample(keep, aliceSifted, bobSifted);
+      const aliceRemaining = removeSampleBits(aliceSifted, disclosure.sampleLocalIndices);
+      const bobRemaining = removeSampleBits(bobSifted, disclosure.sampleLocalIndices);
+      const reconciliation = reconcileBitsPlaceholder(aliceRemaining, bobRemaining);
+      const privacy = await privacyAmplifyBits(reconciliation.correctedBits);
+
+      protocolStages = {
+        rawCount: aliceBits.length,
+        siftedCount: aliceSifted.length,
+        sampleKeepIndices: disclosure.sampleKeepIndices,
+        sampleQBER: disclosure.sampleQBER,
+        correctedBits: reconciliation.correctedBits,
+        finalBits: privacy.finalBits,
+        reconciliationSummary: reconciliation.mismatches.length ? `Placeholder corrected ${reconciliation.mismatches.length}` : "No corrections needed",
+        notes: `Sample disclosure used ${disclosure.sampleKeepIndices.length || 0} public test bit${disclosure.sampleKeepIndices.length === 1 ? "" : "s"}. Reconciliation is still an idealized placeholder in this demo, and privacy amplification compresses the corrected key with a SHA-256-derived bitstream.`
+      };
+
+      logTranscript("=== Public basis comparison ===");
+      logTranscript("keep idx   = " + JSON.stringify(keep));
+      logTranscript("aliceSift  = " + JSON.stringify(aliceSifted));
+      logTranscript("bobSift    = " + JSON.stringify(bobSifted));
+      logTranscript("full QBER  = " + qber);
+      logTranscript("test idx   = " + JSON.stringify(disclosure.sampleKeepIndices));
+      logTranscript("aliceTest  = " + JSON.stringify(disclosure.aliceTestBits));
+      logTranscript("bobTest    = " + JSON.stringify(disclosure.bobTestBits));
+      logTranscript("sampleQBER = " + disclosure.sampleQBER);
+      logTranscript("remainA    = " + JSON.stringify(aliceRemaining));
+      logTranscript("remainB    = " + JSON.stringify(bobRemaining));
+      logTranscript("reconcile  = " + reconciliation.status);
+      logTranscript("finalBits  = " + JSON.stringify(privacy.finalBits));
+
+      lastProtocol = {
+        aliceBits, aliceBases, eveEnabled, eveBases, eveResults, bobBases, bobResults, keep, qber,
+        sampleKeepIndices: disclosure.sampleKeepIndices,
+        finalBits: privacy.finalBits,
+      };
+      updateMetrics(qber, keep.length, eveEnabled);
+      updatePipelineUI(protocolStages);
+      playProtocolAnimation(lastProtocol, "BB84 completed");
+      updateInspector(0);
+
+      let keyStatusText = "Waiting";
+      if (keep.length < 8) keyStatusText = "Rejected · too few sifted bits";
+      else if (disclosure.sampleQBER > 0.15) keyStatusText = "Rejected · sample QBER too high";
+      else if (privacy.finalBits.length < 8) keyStatusText = "Rejected · final key too short";
+      else keyStatusText = "Accepted · final key ready";
+      renderProtocolTable(lastProtocol, keyStatusText);
+      setSummaryEvent("Public comparison and post-processing complete");
+
+      if (keep.length < 8) {
+        setStatus("Too few sifted bits. Run BB84 again.", "warn");
+        sessionKey = null;
+        return;
+      }
+
+      if (disclosure.sampleQBER > 0.15) {
+        setStatus("Sample QBER too high. Possible eavesdropping/noise detected. Key rejected.", "bad");
+        sessionKey = null;
+        return;
+      }
+
+      if (privacy.finalBits.length < 8) {
+        setStatus("Final key became too short after post-processing. Run BB84 again.", "warn");
+        sessionKey = null;
+        return;
+      }
+
+      sessionKey = await deriveAesKeyFromBits(privacy.finalBits);
+      setStatus(`BB84 success. Final AES key derived from ${privacy.finalBits.length} privacy-amplified bits.`, "good");
+    });
+
+    socket.on("receive-message", async (message) => {
+      if (!sessionKey) {
+        logChat(`[ciphertext received before key] ${JSON.stringify(message)}`);
+        logTranscript("Ciphertext arrived before a valid session key existed.");
+        setSummaryEvent("Ciphertext before key");
+        return;
+      }
+
+      try {
+        const plaintext = await decryptMessage(message);
+        replayForMessage("Message received");
+        logChat(`[${message.sender}] ${plaintext}`);
+        logTranscript(`Encrypted inbound message decrypted from ${message.sender}.`);
+        setSummaryEvent("Encrypted message received");
+      } catch (err) {
+        logChat(`[decrypt failed] ${err.message}`);
+        logTranscript(`Decryption failed: ${err.message}`);
+        setSummaryEvent("Decrypt failed");
+      }
+    });
+
+    clearVizOn(ctx, els.vizCanvas);
+    clearVizOn(modalCtx, els.modalVizCanvas);
+    drawStationLabelsOn(ctx, false, getVizDimensions(els.vizCanvas, 8, false));
+    drawStationLabelsOn(modalCtx, false, getVizDimensions(els.modalVizCanvas, 8, false));
+    updateMetrics(null, null, false);
+    updatePipelineUI(null);
+    resetTranscriptTable();
+    drawHeatmap();
+    updateInspector();
+    els.vizLegend.textContent = "Run BB84 to generate a key and replay photon polarizations.";
+    els.modalVizLegend.textContent = "Run BB84 to populate the enlarged replay window.";
+  </script>
+</body>
+</html>
